@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SysMon Analytics</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
+
+  :root {
+    --bg:      #0d0f14;
+    --surface: #141720;
+    --srf2:    #1c2030;
+    --border:  #252a3a;
+    --text:    #c8d0e0;
+    --dim:     #5a6278;
+    --cyan:    #3dd6f5;
+    --mag:     #d85bbd;
+    --yel:     #e8c547;
+    --grn:     #5de88b;
+    --red:     #f05d5d;
+    --blu:     #5b8ef5;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',sans-serif; font-size:14px; min-height:100vh; }
+
+  header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:15px 28px; border-bottom:1px solid var(--border);
+    background:var(--surface); position:sticky; top:0; z-index:10;
+    gap:12px; flex-wrap:wrap;
+  }
+  .logo { font-family:'IBM Plex Mono',monospace; font-size:17px; font-weight:600; color:var(--cyan); }
+  .logo span { color:var(--dim); font-weight:400; }
+  .hdr-right { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+
+  .btn {
+    font-family:'IBM Plex Mono',monospace; font-size:12px;
+    padding:6px 13px; border:1px solid var(--border);
+    background:var(--srf2); color:var(--text); border-radius:4px;
+    cursor:pointer; transition:border-color .15s,color .15s,background .15s; white-space:nowrap;
+  }
+  .btn:hover   { border-color:var(--cyan); color:var(--cyan); }
+  .btn.live-on { border-color:var(--grn)!important; color:var(--grn)!important; background:rgba(93,232,139,.07)!important; }
+  #file-input  { display:none; }
+
+  .strip {
+    padding:5px 28px; background:rgba(61,214,245,.04);
+    border-bottom:1px solid var(--border);
+    font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--dim);
+    display:flex; gap:20px; flex-wrap:wrap; align-items:center;
+    min-height:28px;
+  }
+  .strip b { color:var(--cyan); font-weight:400; }
+  .live-pill {
+    display:inline-flex; align-items:center; gap:6px;
+    background:rgba(93,232,139,.1); border:1px solid rgba(93,232,139,.3);
+    border-radius:20px; padding:2px 10px; font-size:10px; color:var(--grn);
+  }
+  .live-dot { width:6px; height:6px; border-radius:50%; background:var(--grn); animation:pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+  main { padding:22px 28px; max-width:1500px; margin:0 auto; }
+
+  /* cards */
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:14px 16px; position:relative; overflow:hidden; }
+  .card::before { content:''; position:absolute; top:0;left:0;right:0; height:2px; }
+  .card.cpu::before  { background:var(--cyan); }
+  .card.mem::before  { background:var(--mag); }
+  .card.swap::before { background:var(--grn); }
+  .card.disk::before { background:var(--yel); }
+  .card.net::before  { background:var(--blu); }
+  .card-lbl { font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); margin-bottom:5px; }
+  .card-val { font-size:27px; font-weight:300; line-height:1; margin-bottom:3px; }
+  .card.cpu  .card-val { color:var(--cyan); }
+  .card.mem  .card-val { color:var(--mag); }
+  .card.swap .card-val { color:var(--grn); }
+  .card.disk .card-val { color:var(--yel); }
+  .card.net  .card-val { color:var(--blu); }
+  .card-sub { font-size:11px; color:var(--dim); }
+
+  /* slider */
+  .slider-box {
+    background:var(--surface); border:1px solid var(--border); border-radius:8px;
+    padding:14px 20px; margin-bottom:20px;
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  }
+  .slider-label { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--dim); white-space:nowrap; }
+  .slider-label b { color:var(--cyan); }
+  input[type=range] {
+    flex:1; min-width:180px; height:4px;
+    -webkit-appearance:none; appearance:none;
+    background:var(--border); border-radius:2px; outline:none; cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none;
+    width:14px; height:14px; border-radius:50%;
+    background:var(--cyan); cursor:pointer; border:2px solid var(--bg);
+  }
+  input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; border-radius:50%;
+    background:var(--cyan); cursor:pointer; border:2px solid var(--bg);
+  }
+  .slider-ticks { display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--dim); margin-top:4px; }
+
+  /* charts */
+  .charts { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px; }
+  .chart-wide { grid-column:1/-1; }
+  .chart-box { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:16px 18px; }
+  .chart-lbl { font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); margin-bottom:12px; display:flex; align-items:center; gap:7px; }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex-shrink:0; }
+  canvas { max-height:200px; }
+
+  /* process impact table */
+  .proc-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:28px; }
+  .sec-lbl { font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); margin-bottom:9px; }
+  table { width:100%; border-collapse:collapse; font-family:'IBM Plex Mono',monospace; font-size:12px; background:var(--surface); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  thead th { padding:8px 14px; text-align:left; background:var(--srf2); color:var(--dim); font-size:10px; letter-spacing:.08em; text-transform:uppercase; border-bottom:1px solid var(--border); }
+  tbody tr { border-bottom:1px solid var(--border); }
+  tbody tr:last-child { border-bottom:none; }
+  tbody tr:hover { background:var(--srf2); }
+  td { padding:7px 14px; }
+  td.rank { color:var(--dim); width:28px; text-align:center; }
+  .hi { color:var(--red); } .md { color:var(--yel); } .lo { color:var(--grn); }
+  .bar-cell { position:relative; }
+  .bar-bg { position:absolute; left:0; top:0; height:100%; background:rgba(61,214,245,.06); border-radius:0; }
+
+  /* empty */
+  #empty { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:70px 20px; gap:13px; color:var(--dim); font-family:'IBM Plex Mono',monospace; text-align:center; }
+  #empty .ico { font-size:42px; }
+  #empty h2   { font-size:15px; color:var(--text); font-weight:400; }
+  #empty p    { font-size:12px; max-width:480px; line-height:1.9; }
+  #empty code { color:var(--cyan); background:var(--srf2); padding:1px 5px; border-radius:3px; }
+  #dash { display:none; }
+
+  ::-webkit-scrollbar { width:5px; }
+  ::-webkit-scrollbar-track { background:var(--bg); }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚡ SysMon <span>/ Analytics</span></div>
+  <div class="hdr-right">
+    <button class="btn" id="live-btn">⏵ Live Mode</button>
+    <label class="btn" for="file-input">📂 Load Log File</label>
+    <input type="file" id="file-input" accept=".json"/>
+    <button class="btn" id="sample-btn">Try Sample Data</button>
+  </div>
+</header>
+
+<div class="strip">
+  <span id="live-indicator"></span>
+  <span>Status: <b id="s-status">No data</b></span>
+  <span>Entries: <b id="s-count">—</b></span>
+  <span>Range: <b id="s-range">—</b></span>
+  <span>Machine: <b id="s-machine">—</b></span>
+</div>
+
+<main>
+  <div id="empty">
+    <div class="ico">📊</div>
+    <h2>No log loaded yet</h2>
+    <p>
+      Run <code>python monitor.py</code> to start collecting data.<br/>
+      Log files are saved to <code>output/sysmon_YYYY-MM-DD_HH-MM-SS.json</code><br/><br/>
+      <strong>Live Mode:</strong> while the monitor is running, click <strong>⏵ Live Mode</strong>
+      and enter the log filename — the dashboard will poll and refresh every 2 seconds.<br/>
+      The monitor displays the URL and filename in its footer.<br/><br/>
+      Or click <strong>Load Log File</strong> to review any saved run.
+    </p>
+  </div>
+
+  <div id="dash">
+    <!-- Time range slider -->
+    <div class="slider-box">
+      <div>
+        <div class="slider-label">Time window: <b id="slider-label">All data</b></div>
+        <div class="slider-ticks"><span id="tick-start">—</span><span id="tick-end">—</span></div>
+      </div>
+      <input type="range" id="range-slider" min="0" max="100" value="0" step="1"/>
+      <div class="slider-label" style="min-width:90px;text-align:right">
+        <span id="slider-count">— pts</span>
+      </div>
+    </div>
+
+    <!-- Stat cards -->
+    <div class="cards">
+      <div class="card cpu"> <div class="card-lbl">CPU Avg</div>    <div class="card-val" id="c-cpu">—</div>  <div class="card-sub" id="c-cpu-s">—</div>  </div>
+      <div class="card mem"> <div class="card-lbl">Memory Avg</div> <div class="card-val" id="c-mem">—</div>  <div class="card-sub" id="c-mem-s">—</div>  </div>
+      <div class="card swap"><div class="card-lbl">Swap Avg</div>   <div class="card-val" id="c-swap">—</div> <div class="card-sub" id="c-swap-s">—</div> </div>
+      <div class="card disk"><div class="card-lbl">Disk (latest)</div><div class="card-val" id="c-disk">—</div><div class="card-sub" id="c-disk-s">—</div></div>
+      <div class="card net"> <div class="card-lbl">Net Received</div><div class="card-val" id="c-net">—</div> <div class="card-sub" id="c-net-s">—</div> </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts">
+      <div class="chart-box chart-wide">
+        <div class="chart-lbl"><span class="dot" style="background:var(--cyan)"></span>CPU Usage Over Time</div>
+        <canvas id="ch-cpu"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-lbl"><span class="dot" style="background:var(--mag)"></span>Memory Usage %</div>
+        <canvas id="ch-mem"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-lbl"><span class="dot" style="background:var(--grn)"></span>Swap Usage %</div>
+        <canvas id="ch-swap"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-lbl"><span class="dot" style="background:var(--yel)"></span>CPU Load Distribution</div>
+        <canvas id="ch-hist"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-lbl"><span class="dot" style="background:var(--blu)"></span>CPU vs Memory (Scatter)</div>
+        <canvas id="ch-scatter"></canvas>
+      </div>
+    </div>
+
+    <!-- Process impact ranking -->
+    <div class="proc-grid">
+      <div>
+        <div class="sec-lbl">🏆 Top Process Impact — CPU (avg across run)</div>
+        <table id="proc-cpu-table">
+          <thead><tr><th>#</th><th>Process</th><th>Avg CPU %</th><th>Peak CPU %</th><th>Appearances</th></tr></thead>
+          <tbody id="proc-cpu-body"></tbody>
+        </table>
+      </div>
+      <div>
+        <div class="sec-lbl">🏆 Top Process Impact — Memory (avg across run)</div>
+        <table id="proc-mem-table">
+          <thead><tr><th>#</th><th>Process</th><th>Avg Mem %</th><th>Peak Mem %</th><th>Appearances</th></tr></thead>
+          <tbody id="proc-mem-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ── Chart setup ───────────────────────────────────────────────────────────────
+Chart.defaults.color = '#5a6278';
+Chart.defaults.borderColor = '#252a3a';
+Chart.defaults.font.family = "'IBM Plex Mono',monospace";
+Chart.defaults.font.size = 11;
+
+const ch = {};
+
+function rgba(h, a) {
+  const r=parseInt(h.slice(1,3),16), g=parseInt(h.slice(3,5),16), b=parseInt(h.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function lineChart(id, vals, labels, color) {
+  const ctx = document.getElementById(id).getContext('2d');
+  if (ch[id]) ch[id].destroy();
+  ch[id] = new Chart(ctx, {
+    type:'line',
+    data:{ labels, datasets:[{ data:vals, borderColor:color, backgroundColor:rgba(color,.08), borderWidth:1.5, pointRadius:0, fill:true, tension:0.3 }] },
+    options:{ animation:false, responsive:true, maintainAspectRatio:true,
+      plugins:{ legend:{ display:false } },
+      scales:{ x:{ ticks:{ maxTicksLimit:10 } }, y:{ min:0, max:100, ticks:{ callback:v=>v+'%' } } }
+    }
+  });
+}
+
+function histChart(id, vals) {
+  const bins=10, counts=new Array(bins).fill(0);
+  vals.forEach(v => counts[Math.min(Math.floor(v/10),9)]++);
+  const ctx = document.getElementById(id).getContext('2d');
+  if (ch[id]) ch[id].destroy();
+  ch[id] = new Chart(ctx, {
+    type:'bar',
+    data:{ labels:counts.map((_,i)=>`${i*10}–${i*10+10}%`), datasets:[{ data:counts, backgroundColor:rgba('#e8c547',.55), borderColor:'#e8c547', borderWidth:1 }] },
+    options:{ animation:false, responsive:true, maintainAspectRatio:true, plugins:{ legend:{ display:false } }, scales:{ x:{ grid:{ display:false } } } }
+  });
+}
+
+function scatterChart(id, xVals, yVals) {
+  const data = xVals.map((x,i) => ({ x, y:yVals[i] }));
+  const ctx = document.getElementById(id).getContext('2d');
+  if (ch[id]) ch[id].destroy();
+  ch[id] = new Chart(ctx, {
+    type:'scatter',
+    data:{ datasets:[{ data, backgroundColor:rgba('#5b8ef5',.3), borderColor:'#5b8ef5', borderWidth:1, pointRadius:3 }] },
+    options:{ animation:false, responsive:true, maintainAspectRatio:true, plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ title:{ display:true, text:'CPU %', color:'#5a6278' }, min:0, max:100 },
+        y:{ title:{ display:true, text:'Memory %', color:'#5a6278' }, min:0, max:100 }
+      }
+    }
+  });
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function avg(a)  { return a.length ? a.reduce((x,y)=>x+y,0)/a.length : 0; }
+function pc(v)   { return v>=90?'hi':v>=60?'md':'lo'; }
+function fmtTs(ts) { return (ts||'').split('T')[1] || ts || ''; }
+
+// ── Slider state ──────────────────────────────────────────────────────────────
+let allData = [];
+// sliderValue 0 = full run; 1–100 = "show this % of total, ending at right edge"
+const slider = document.getElementById('range-slider');
+
+function slicedData() {
+  const pct = parseInt(slider.value);
+  if (pct === 0 || allData.length === 0) return allData;
+  const n = Math.max(1, Math.round(allData.length * pct / 100));
+  return allData.slice(-n);
+}
+
+function updateSliderLabel() {
+  const pct = parseInt(slider.value);
+  const slice = slicedData();
+  const lbl = document.getElementById('slider-label');
+  const cnt = document.getElementById('slider-count');
+  if (pct === 0) {
+    lbl.textContent = 'Full run';
+  } else {
+    lbl.textContent = `Last ${pct}% of run`;
+  }
+  cnt.textContent = `${slice.length} pts`;
+  document.getElementById('tick-start').textContent = slice.length ? fmtTs(slice[0].timestamp) : '—';
+  document.getElementById('tick-end').textContent   = slice.length ? fmtTs(slice.at(-1).timestamp) : '—';
+}
+
+slider.addEventListener('input', () => { updateSliderLabel(); render(slicedData()); });
+
+// ── Process impact aggregation ────────────────────────────────────────────────
+function buildProcRankings(data) {
+  // Aggregate across all snapshots in the slice
+  const cpuMap = {}, memMap = {};
+
+  data.forEach(snap => {
+    const procs = [
+      ...(snap.top_cpu_processes || []),
+      ...(snap.top_mem_processes || []),
+    ];
+    const seen = new Set();
+    procs.forEach(p => {
+      const name = p.name || '?';
+      if (seen.has(name)) return;
+      seen.add(name);
+
+      const cpu = p.cpu_percent || 0;
+      const mem = p.memory_percent || 0;
+
+      if (!cpuMap[name]) cpuMap[name] = { name, samples:[], peak:0 };
+      cpuMap[name].samples.push(cpu);
+      cpuMap[name].peak = Math.max(cpuMap[name].peak, cpu);
+
+      if (!memMap[name]) memMap[name] = { name, samples:[], peak:0 };
+      memMap[name].samples.push(mem);
+      memMap[name].peak = Math.max(memMap[name].peak, mem);
+    });
+  });
+
+  const topCpu = Object.values(cpuMap)
+    .map(x => ({ name:x.name, avg:avg(x.samples), peak:x.peak, count:x.samples.length }))
+    .sort((a,b) => b.avg - a.avg).slice(0, 10);
+
+  const topMem = Object.values(memMap)
+    .map(x => ({ name:x.name, avg:avg(x.samples), peak:x.peak, count:x.samples.length }))
+    .sort((a,b) => b.avg - a.avg).slice(0, 10);
+
+  return { topCpu, topMem };
+}
+
+function renderProcTable(tbodyId, rows, valKey, peakKey) {
+  const maxAvg = rows.length ? rows[0].avg : 1;
+  document.getElementById(tbodyId).innerHTML = rows.map((r, i) => {
+    const barW = maxAvg > 0 ? (r.avg / maxAvg * 100).toFixed(1) : 0;
+    return `<tr>
+      <td class="rank">${i+1}</td>
+      <td class="bar-cell">
+        <div class="bar-bg" style="width:${barW}%"></div>
+        <span style="position:relative">${r.name}</span>
+      </td>
+      <td class="${pc(r.avg)}">${r.avg.toFixed(2)}%</td>
+      <td class="${pc(r.peak)}">${r.peak.toFixed(1)}%</td>
+      <td style="color:var(--dim)">${r.count}×</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render(data) {
+  if (!data.length) return;
+  const labels = data.map(d => fmtTs(d.timestamp));
+  const cpuV   = data.map(d => d.cpu?.total    ?? 0);
+  const memV   = data.map(d => d.memory?.percent ?? 0);
+  const swapV  = data.map(d => d.swap?.percent  ?? 0);
+  const last   = data.at(-1) || {};
+
+  // Cards
+  document.getElementById('c-cpu').textContent    = avg(cpuV).toFixed(1)+'%';
+  document.getElementById('c-cpu-s').textContent  = `peak ${Math.max(...cpuV).toFixed(1)}%`;
+  document.getElementById('c-mem').textContent    = avg(memV).toFixed(1)+'%';
+  document.getElementById('c-mem-s').textContent  = `of ${last.memory?.total_gb?.toFixed(1)??'?'} GB`;
+  document.getElementById('c-swap').textContent   = avg(swapV).toFixed(1)+'%';
+  document.getElementById('c-swap-s').textContent = `of ${last.swap?.total_gb?.toFixed(1)??'?'} GB`;
+
+  const pd = last.disks?.[0];
+  document.getElementById('c-disk').textContent   = pd ? pd.percent.toFixed(1)+'%' : '—';
+  document.getElementById('c-disk-s').textContent = pd ? `${pd.used_gb}/${pd.total_gb} GB (${pd.path})` : '—';
+
+  const nr = last.network?.recv_mb ?? 0;
+  document.getElementById('c-net').textContent   = nr>=1000 ? (nr/1000).toFixed(1)+' GB' : nr.toFixed(0)+' MB';
+  document.getElementById('c-net-s').textContent = `sent ${last.network?.sent_mb?.toFixed(0)??'—'} MB`;
+
+  // Charts
+  lineChart('ch-cpu',  cpuV,  labels, '#3dd6f5');
+  lineChart('ch-mem',  memV,  labels, '#d85bbd');
+  lineChart('ch-swap', swapV, labels, '#5de88b');
+  histChart('ch-hist', cpuV);
+  scatterChart('ch-scatter', cpuV, memV);
+
+  // Process rankings
+  const { topCpu, topMem } = buildProcRankings(data);
+  renderProcTable('proc-cpu-body', topCpu);
+  renderProcTable('proc-mem-body', topMem);
+}
+
+// ── Load / status ─────────────────────────────────────────────────────────────
+function updateStatusBar(data) {
+  document.getElementById('s-status').textContent  = 'Loaded ✓';
+  document.getElementById('s-count').textContent   = data.length.toLocaleString();
+  if (data.length) {
+    document.getElementById('s-range').textContent   = `${data[0].timestamp} → ${data.at(-1).timestamp}`;
+    document.getElementById('s-machine').textContent = `${data[0].cpu?.logical_cores??'?'} cores · ${data[0].memory?.total_gb??'?'} GB RAM`;
+  }
+}
+
+function loadData(data) {
+  allData = Array.isArray(data) ? data : [data];
+  document.getElementById('empty').style.display = 'none';
+  document.getElementById('dash').style.display  = 'block';
+  slider.value = 0;
+  updateSliderLabel();
+  updateStatusBar(allData);
+  render(allData);
+}
+
+// ── Live mode — fetch() from local HTTP server ────────────────────────────────
+let liveTimer   = null;
+let liveLogPath = null;
+
+const liveBtn  = document.getElementById('live-btn');
+const liveInd  = document.getElementById('live-indicator');
+
+function setLivePill(on) {
+  liveBtn.textContent = on ? '⏹ Stop Live' : '⏵ Live Mode';
+  liveBtn.classList.toggle('live-on', on);
+  liveInd.innerHTML = on
+    ? '<span class="live-pill"><span class="live-dot"></span>LIVE — refreshing every 2s</span>'
+    : '';
+}
+
+async function fetchLog(path) {
+  try {
+    const res = await fetch(path, { cache:'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    allData = Array.isArray(data) ? data : [data];
+    updateStatusBar(allData);
+    updateSliderLabel();
+    render(slicedData());
+    document.getElementById('s-status').textContent = 'Live ✓';
+    document.getElementById('empty').style.display = 'none';
+    document.getElementById('dash').style.display  = 'block';
+  } catch(e) {
+    document.getElementById('s-status').textContent = `Waiting for log… (${e.message})`;
+  }
+}
+
+function stopLive() {
+  clearInterval(liveTimer); liveTimer = null;
+  setLivePill(false);
+}
+
+function startLive(path) {
+  liveLogPath = path;
+  setLivePill(true);
+  fetchLog(path);
+  liveTimer = setInterval(() => fetchLog(path), 2000);
+}
+
+// Auto-start live mode if ?log= query param is present (set by monitor.py)
+const urlParams = new URLSearchParams(window.location.search);
+const autoLog   = urlParams.get('log');
+if (autoLog) {
+  // Slight delay so page renders first
+  setTimeout(() => startLive(autoLog), 400);
+}
+
+liveBtn.addEventListener('click', () => {
+  if (liveTimer) { stopLive(); return; }
+
+  // Check if we're being served over HTTP (required for fetch to work)
+  if (window.location.protocol === 'file:') {
+    alert(
+      'Live Mode requires the dashboard to be served over HTTP.\n\n' +
+      'Run the monitor first:\n  python monitor.py\n\n' +
+      'Then open: http://127.0.0.1:7477/dashboard.html\n\n' +
+      'The monitor automatically starts a local server when it runs.'
+    );
+    return;
+  }
+
+  const filename = prompt(
+    'Enter the log filename to watch.\n\nLog files are in: output/\nFilename format: sysmon_YYYY-MM-DD_HH-MM-SS.json\n\nThe monitor shows the exact filename in its footer.\n\nFilename:',
+    autoLog || 'output/sysmon_YYYY-MM-DD_HH-MM-SS.json'
+  );
+  if (!filename) return;
+  startLive(filename.trim());
+});
+
+// ── Manual file load ──────────────────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', e => {
+  stopLive();
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try { loadData(JSON.parse(ev.target.result)); }
+    catch(err) { alert('JSON parse error: ' + err.message); }
+  };
+  r.readAsText(f);
+});
+
+// ── Sample data ───────────────────────────────────────────────────────────────
+document.getElementById('sample-btn').addEventListener('click', () => {
+  stopLive();
+  const out=[]; let recv=80, sent=20; const now=new Date();
+  const sampleProcs = ['chrome.exe','code.exe','node.exe','python.exe','discord.exe','slack.exe'];
+  for (let i=299;i>=0;i--) {
+    const t    = new Date(now-i*1000).toISOString().slice(0,19);
+    const cpu  = Math.max(1,  Math.min(98, 20+Math.sin(i/12)*15+(Math.random()-.5)*18));
+    const mem  = Math.max(28, Math.min(82, 52+Math.sin(i/25)*8 +(Math.random()-.5)*4));
+    const swap = Math.max(0,  Math.min(35, 6 +(Math.random()-.5)*5));
+    recv+=Math.random()*1.5; sent+=Math.random()*.4;
+
+    // Simulate top processes
+    const topCpu = sampleProcs.slice(0,5).map((name,j) => ({
+      pid: 1000+j, name, status:'running',
+      cpu_percent: Math.max(0, cpu*(0.3-j*0.05)+(Math.random()-.5)*5),
+      memory_percent: Math.max(0, 2-j*0.3+(Math.random()-.5)*0.5),
+    }));
+    const topMem = [...sampleProcs].sort(()=>Math.random()-.5).slice(0,5).map((name,j) => ({
+      pid:2000+j, name, status:'running',
+      cpu_percent: Math.max(0,(Math.random()-.5)*3),
+      memory_percent: Math.max(0, 3-j*0.4+(Math.random()-.5)*0.5),
+    }));
+
+    out.push({
+      timestamp:t,
+      cpu:   { total:+cpu.toFixed(1), per_core:[cpu,cpu*.9], freq_mhz:3701, logical_cores:24, physical_cores:12 },
+      memory:{ total_gb:34.28, used_gb:+(34.28*mem/100).toFixed(2), available_gb:+(34.28*(1-mem/100)).toFixed(2), percent:+mem.toFixed(1) },
+      swap:  { total_gb:2.15, used_gb:+(2.15*swap/100).toFixed(2), percent:+swap.toFixed(1) },
+      disks: [{ path:'C:\\', total_gb:1023, used_gb:989, free_gb:34, percent:96.7 }, { path:'D:\\', total_gb:2000, used_gb:800, free_gb:1200, percent:40 }],
+      disk_io:{ read_mb:247672, write_mb:204099 },
+      network:{ sent_mb:+sent.toFixed(1), recv_mb:+recv.toFixed(1), packets_sent:Math.floor(sent*900), packets_recv:Math.floor(recv*900) },
+      top_cpu_processes: topCpu,
+      top_mem_processes: topMem,
+    });
+  }
+  loadData(out);
+});
+</script>
+</body>
+</html>
